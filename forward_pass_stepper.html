@@ -1,0 +1,385 @@
+
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  .fp-wrap{background:#000;border:1px solid #00FF9C;border-radius:8px;padding:0;font-family:monospace;overflow:hidden}
+  .fp-header{background:#000;border-bottom:1px solid #00FF9C;padding:14px 20px;display:flex;align-items:center;justify-content:space-between}
+  .fp-title{color:#00FF9C;font-size:12px;letter-spacing:2px;font-weight:700}
+  .fp-steps{display:flex;gap:6px;align-items:center}
+  .fp-dot{width:10px;height:10px;border-radius:50%;border:1px solid #00FF9C;background:#000;transition:background .3s}
+  .fp-dot.active{background:#00FF9C}
+  .fp-dot.done{background:#005533}
+  .fp-body{padding:20px}
+  .fp-stage{color:#00FF9C;font-size:10px;letter-spacing:3px;opacity:0.5;margin-bottom:6px}
+  .fp-label{color:#00FF9C;font-size:15px;font-weight:700;margin-bottom:16px}
+  .fp-svg-wrap{width:100%;margin-bottom:16px}
+  .fp-eq-box{border:1px solid #00FF9C;border-radius:4px;padding:10px 14px;color:#00FF9C;font-size:12px;line-height:1.8;margin-bottom:12px}
+  .fp-eq-box span{opacity:0.6;font-size:11px}
+  .fp-desc{color:#00FF9C;font-size:11px;opacity:0.7;line-height:1.7;margin-bottom:18px;border-left:2px solid #005533;padding-left:10px}
+  .fp-nav{display:flex;gap:10px;justify-content:space-between;align-items:center}
+  .fp-btn{background:#000;border:1px solid #00FF9C;color:#00FF9C;font-family:monospace;font-size:11px;letter-spacing:1px;padding:8px 18px;cursor:pointer;border-radius:4px;transition:background .2s}
+  .fp-btn:hover{background:#002211}
+  .fp-btn:disabled{opacity:0.2;cursor:not-allowed}
+  .fp-btn.primary{background:#00FF9C;color:#000;font-weight:700}
+  .fp-btn.primary:hover{background:#00cc7a}
+  .fp-counter{color:#00FF9C;font-size:10px;opacity:0.5;letter-spacing:1px}
+  .fp-val{color:#00FF9C;font-weight:700}
+  .fp-val.hi{color:#fff}
+  .fp-val.dim{opacity:0.35}
+</style>
+
+<div class="fp-wrap">
+  <div class="fp-header">
+    <span class="fp-title">FORWARD PASS — MNIST</span>
+    <div class="fp-steps" id="dots"></div>
+  </div>
+  <div class="fp-body">
+    <div class="fp-stage" id="stage-label"></div>
+    <div class="fp-label" id="step-label"></div>
+    <div class="fp-svg-wrap" id="svg-area"></div>
+    <div class="fp-eq-box" id="eq-box"></div>
+    <div class="fp-desc" id="desc-box"></div>
+    <div class="fp-nav">
+      <button class="fp-btn" id="prev-btn" onclick="move(-1)">← Anterior</button>
+      <span class="fp-counter" id="counter"></span>
+      <button class="fp-btn primary" id="next-btn" onclick="move(1)">Próximo →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const C = '#00FF9C';
+const DIM = 'opacity:0.25';
+const ARROW = `<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="${C}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>`;
+
+function svg(h, body) {
+  return `<svg width="100%" viewBox="0 0 680 ${h}" style="background:#000;display:block">${ARROW}${body}</svg>`;
+}
+function box(x,y,w,h,label,sub,bright){
+  const s = bright ? `fill:#000;stroke:${C};stroke-width:1.5` : `fill:#000;stroke:${C};stroke-width:0.5;opacity:0.35`;
+  const tc = bright ? C : C;
+  const to = bright ? '1' : '0.35';
+  const sub2 = sub ? `<text x="${x+w/2}" y="${y+h/2+10}" text-anchor="middle" font-family="monospace" font-size="9" fill="${C}" opacity="${bright?0.6:0.2}">${sub}</text>` : '';
+  return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" style="${s}"/>
+    <text x="${x+w/2}" y="${y+h/2-(sub?5:0)}" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="9" fill="${C}" opacity="${to}" font-weight="${bright?700:400}">${label}</text>${sub2}`;
+}
+function circ(cx,cy,r,label,bright){
+  const s = bright ? `fill:#000;stroke:${C};stroke-width:1.5` : `fill:#000;stroke:${C};stroke-width:0.5;opacity:0.35`;
+  const to = bright ? '1' : '0.3';
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" style="${s}"/>
+    <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="13" fill="${C}" opacity="${to}" font-weight="700">${label}</text>`;
+}
+function line(x1,y1,x2,y2,bright,arrow){
+  const o = bright ? 1 : 0.15;
+  const me = arrow ? ` marker-end="url(#ar)"` : '';
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${C}" stroke-width="${bright?1.2:0.4}" opacity="${o}"${me} fill="none"/>`;
+}
+function label(x,y,txt,op){
+  return `<text x="${x}" y="${y}" text-anchor="middle" font-family="monospace" font-size="9" fill="${C}" opacity="${op||0.6}">${txt}</text>`;
+}
+function bigLabel(x,y,txt,op){
+  return `<text x="${x}" y="${y}" text-anchor="middle" font-family="monospace" font-size="12" fill="${C}" opacity="${op||1}" font-weight="700">${txt}</text>`;
+}
+
+const steps = [
+  {
+    stage:'ETAPA 0 — ENTRADA',
+    title:'Imagem → vetor de entrada x',
+    eq:`x ∈ ℝ⁷⁸⁴\n\nx₁ = 0.82,  x₂ = 0.11,  x₃ = 0.00,  …,  x₇₈₄ = 0.45\n<span>Cada pixel (0–255) dividido por 255 → valor entre 0 e 1</span>`,
+    desc:'A imagem 28×28 do dígito manuscrito é "achatada" num vetor coluna de 784 valores. Cada posição representa a intensidade de um pixel normalizada. Este vetor x é a entrada da rede.',
+    svg:()=>{
+      let b = '';
+      const xs = [40,108,176,244,312,380,448,516,584];
+      const vals = ['0.82','0.11','0.00','0.51','0.33','0.77','0.09','0.62','0.45'];
+      const labs = ['x₁','x₂','x₃','x₄','x₅','x₆','x₇','x₈','x₇₈₄'];
+      for(let i=0;i<9;i++){
+        const bright = i===0;
+        b += box(xs[i],60,60,34,vals[i],null,bright);
+        b += `<text x="${xs[i]+30}" y="${105}" text-anchor="middle" font-family="monospace" font-size="9" fill="${C}" opacity="${bright?0.8:0.3}">${labs[i]}</text>`;
+        if(i===7) b += `<text x="${xs[i]+68}" y="${80}" text-anchor="middle" font-family="monospace" font-size="14" fill="${C}" opacity="0.4">…</text>`;
+      }
+      b += bigLabel(340,145,'vetor de entrada  x  (784, 1)',0.5);
+      b += `<rect x="30" y="50" width="620" height="60" rx="6" fill="none" stroke="${C}" stroke-width="0.5" opacity="0.2"/>`;
+      return svg(170,b);
+    }
+  },
+  {
+    stage:'ETAPA 1 — CAMADA OCULTA 1',
+    title:'Um neurônio recebe todos os x',
+    eq:`z¹₁ = w¹₁ᵀ · x + b¹₁\n\n= w₁·0.82 + w₂·0.11 + … + w₇₈₄·0.45 + b\n<span>Produto escalar entre o vetor de pesos deste neurônio e o vetor de entrada</span>`,
+    desc:'Cada neurônio da camada oculta 1 recebe TODOS os 784 valores de entrada. Aqui mostramos o neurônio h¹₁: ele multiplica cada entrada xᵢ pelo seu peso wᵢ e soma tudo, mais o bias b. O resultado é chamado de pré-ativação z.',
+    svg:()=>{
+      let b = '';
+      const inputs = [
+        {y:30, lab:'x₁ = 0.82', w:'w₁', bright:true},
+        {y:68, lab:'x₂ = 0.11', w:'w₂', bright:true},
+        {y:106,lab:'x₃ = 0.00', w:'w₃', bright:false},
+        {y:148,lab:'…', w:'', bright:false},
+        {y:178,lab:'x₇₈₄= 0.45',w:'w₇₈₄',bright:false},
+      ];
+      inputs.forEach(({y,lab,w,bright})=>{
+        if(lab==='…'){
+          b+=`<text x="95" y="${y+10}" text-anchor="middle" font-family="monospace" font-size="14" fill="${C}" opacity="0.3">⋮</text>`;
+          return;
+        }
+        b+=box(40,y,120,30,lab,null,bright);
+        if(w) b+=`<text x="192" y="${y+15}" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="9" fill="${C}" opacity="${bright?0.7:0.2}">×${w}</text>`;
+        b+=line(160,y+15,230,110,bright,false);
+      });
+      b+=circ(260,110,32,'Σ',true);
+      b+=`<text x="260" y="152" text-anchor="middle" font-family="monospace" font-size="9" fill="${C}" opacity="0.5">+ b¹₁</text>`;
+      b+=line(292,110,370,110,true,true);
+      b+=box(374,90,110,40,'z¹₁ = ?',null,true);
+      b+=label(429,60,'pré-ativação',0.5);
+      b+=label(340,30,'h¹₁  (neurônio 1 da camada 1)',0.8);
+      return svg(230,b);
+    }
+  },
+  {
+    stage:'ETAPA 1 — CAMADA OCULTA 1',
+    title:'ReLU: aplicando a ativação',
+    eq:`h¹₁ = ReLU(z¹₁) = max(0, z¹₁)\n\nSe z¹₁ = 2.37  →  h¹₁ = 2.37\nSe z¹₁ = -1.04 →  h¹₁ = 0.00\n<span>ReLU "apaga" valores negativos, deixa positivos passarem</span>`,
+    desc:'A pré-ativação z é passada pela função ReLU. Valores negativos viram zero — o neurônio "silencia". Valores positivos passam intactos — o neurônio "dispara". Esta não-linearidade é o que permite à rede aprender padrões complexos.',
+    svg:()=>{
+      let b='';
+      b+=box(40,80,120,36,'z¹₁ = 2.37',null,true);
+      b+=line(160,98,230,98,true,true);
+      b+=`<rect x="234" y="70" width="110" height="56" rx="4" fill="#000" stroke="${C}" stroke-width="1.5"/>`;
+      b+=`<text x="289" y="93" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="11" fill="${C}" font-weight="700">ReLU(z)</text>`;
+      b+=`<text x="289" y="113" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="9" fill="${C}" opacity="0.6">max(0, z)</text>`;
+      b+=line(344,98,414,98,true,true);
+      b+=box(418,80,120,36,'h¹₁ = 2.37',null,true);
+      b+=label(289,50,'função de ativação',0.5);
+      b+=label(479,60,'saída do neurônio',0.5);
+      const gx=70,gy=160,gw=220,gh=100;
+      b+=`<line x1="${gx}" y1="${gy+gh}" x2="${gx+gw}" y2="${gy+gh}" stroke="${C}" stroke-width="0.5" opacity="0.4"/>`;
+      b+=`<line x1="${gx+gw/2}" y1="${gy}" x2="${gx+gw/2}" y2="${gy+gh+4}" stroke="${C}" stroke-width="0.5" opacity="0.4"/>`;
+      b+=`<polyline points="${gx},${gy+gh} ${gx+gw/2},${gy+gh} ${gx+gw},${gy+10}" fill="none" stroke="${C}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+      b+=label(gx+gw/2,gy-10,'ReLU(z)',0.6);
+      b+=label(gx+gw-10,gy+gh+14,'z>0',0.4);
+      b+=label(gx+10,gy+gh+14,'z<0',0.4);
+      const gx2=370,gy2=160;
+      b+=`<line x1="${gx2}" y1="${gy2+gh}" x2="${gx2+gw}" y2="${gy2+gh}" stroke="${C}" stroke-width="0.5" opacity="0.4"/>`;
+      b+=`<line x1="${gx2+gw/2}" y1="${gy2}" x2="${gx2+gw/2}" y2="${gy2+gh+4}" stroke="${C}" stroke-width="0.5" opacity="0.4"/>`;
+      const negVal=60;
+      b+=`<polyline points="${gx2},${gy2+gh} ${gx2+gw/2},${gy2+gh} ${gx2+gw},${gy2+10}" fill="none" stroke="${C}" stroke-width="0.5" stroke-dasharray="3 2" opacity="0.3" stroke-linecap="round" stroke-linejoin="round"/>`;
+      b+=`<circle cx="${gx2+gw/2+negVal}" cy="${gy2+gh-negVal}" r="5" fill="${C}" opacity="0.9"/>`;
+      b+=label(gx2+gw/2+negVal,gy2+gh-negVal-14,'z=2.37',0.8);
+      b+=label(gx2+gw/2,gy2-10,'nossa entrada',0.5);
+      return svg(285,b);
+    }
+  },
+  {
+    stage:'ETAPA 1 — CAMADA OCULTA 1',
+    title:'128 neurônios em paralelo',
+    eq:`h¹ = ReLU(W¹ · x + b¹)\n\nW¹ ∈ ℝ¹²⁸ˣ⁷⁸⁴,  b¹ ∈ ℝ¹²⁸\nh¹ ∈ ℝ¹²⁸\n<span>Cada linha de W¹ é o vetor de pesos de um neurônio diferente</span>`,
+    desc:'Na prática, todos os 128 neurônios da camada oculta 1 fazem a mesma operação simultaneamente. Isso é expresso como uma multiplicação matricial: W¹·x+b¹. O resultado é um novo vetor h¹ de 128 valores, que será a entrada da próxima camada.',
+    svg:()=>{
+      let b='';
+      b+=box(40,40,90,34,'x',null,true);
+      b+=label(85,30,'(784, 1)',0.5);
+      b+=line(130,57,180,57,true,true);
+      b+=box(184,28,120,58,'W¹ · x + b¹',null,true);
+      b+=label(244,18,'(128×784)',0.5);
+      b+=line(304,57,354,57,true,true);
+      b+=`<rect x="358" y="20" width="90" height="12" rx="2" fill="#000" stroke="${C}" stroke-width="0.8" opacity="1"/>`;
+      b+=`<rect x="358" y="38" width="90" height="12" rx="2" fill="#000" stroke="${C}" stroke-width="0.8" opacity="0.7"/>`;
+      b+=`<rect x="358" y="56" width="90" height="12" rx="2" fill="#000" stroke="${C}" stroke-width="0.8" opacity="0.5"/>`;
+      b+=`<text x="403" y="26" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="8" fill="${C}" opacity="1">h¹₁ = 2.37</text>`;
+      b+=`<text x="403" y="44" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="8" fill="${C}" opacity="0.7">h¹₂ = 0.00</text>`;
+      b+=`<text x="403" y="62" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="8" fill="${C}" opacity="0.5">h¹₃ = 1.14</text>`;
+      b+=`<text x="403" y="84" text-anchor="middle" font-family="monospace" font-size="12" fill="${C}" opacity="0.3">⋮</text>`;
+      b+=`<rect x="358" y="96" width="90" height="12" rx="2" fill="#000" stroke="${C}" stroke-width="0.5" opacity="0.3"/>`;
+      b+=`<text x="403" y="102" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="8" fill="${C}" opacity="0.3">h¹₁₂₈= 0.87</text>`;
+      b+=label(403,122,'h¹  (128, 1)',0.5);
+      b+=`<rect x="348" y="10" width="110" height="120" rx="4" fill="none" stroke="${C}" stroke-width="0.4" stroke-dasharray="3 2" opacity="0.3"/>`;
+      const nx=510,ny=20,nw=150;
+      b+=label(nx+nw/2,ny-4,'ReLU aplicada a cada elemento',0.4);
+      for(let i=0;i<4;i++){
+        const oy=ny+i*26;
+        const op=[1,0.6,0.4,0.2][i];
+        b+=`<rect x="${nx}" y="${oy}" width="${nw}" height="20" rx="3" fill="#000" stroke="${C}" stroke-width="0.5" opacity="${op}"/>`;
+        b+=`<text x="${nx+nw/2}" y="${oy+10}" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="8" fill="${C}" opacity="${op}">${['h¹₁=ReLU(2.37)=2.37','h¹₂=ReLU(-0.9)=0.00','h¹₃=ReLU(1.14)=1.14','…'][i]}</text>`;
+      }
+      return svg(150,b);
+    }
+  },
+  {
+    stage:'ETAPA 2 — CAMADA OCULTA 2',
+    title:'h¹ vira entrada da camada 2',
+    eq:`z² = W² · h¹ + b²\nh² = ReLU(z²)\n\nW² ∈ ℝ⁶⁴ˣ¹²⁸,  h² ∈ ℝ⁶⁴\n<span>Mesma operação, mas com vetores menores — 128 entradas, 64 saídas</span>`,
+    desc:'O vetor h¹ (128 valores) agora é a entrada da camada oculta 2. Cada um dos 64 neurônios desta camada recebe todos os 128 valores de h¹, aplica seus próprios pesos W² e bias b², e passa pelo ReLU. O processo é idêntico, mas as dimensões encolhem.',
+    svg:()=>{
+      let b='';
+      const cols = [
+        {x:40, w:80, label:'h¹', sub:'(128,1)', bright:true, nrows:5},
+        {x:170,w:140,label:'W²·h¹+b²',sub:'(64×128)',bright:true,nrows:0},
+        {x:360,w:80, label:'z²',sub:'(64,1)',bright:true,nrows:4},
+        {x:490,w:110,label:'ReLU(z²)',sub:'',bright:true,nrows:0},
+        {x:610,w:60, label:'h²',sub:'(64,1)',bright:true,nrows:4},
+      ];
+      const mid=130;
+      cols.forEach((c,i)=>{
+        if(c.nrows>0){
+          for(let r=0;r<c.nrows;r++){
+            const oy=mid-c.nrows*14+r*28;
+            const op=r===0?1:Math.max(0.2,1-r*0.2);
+            b+=`<rect x="${c.x}" y="${oy}" width="${c.w}" height="22" rx="3" fill="#000" stroke="${C}" stroke-width="${r===0?1.2:0.4}" opacity="${op}"/>`;
+            if(r<3||r===c.nrows-1){
+              const txt=c.label==='h¹'?['1.20','0.00','3.45','⋮','0.87'][r]:['2.10','0.55','0.00','⋮'][r];
+              b+=`<text x="${c.x+c.w/2}" y="${oy+11}" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="9" fill="${C}" opacity="${op}">${txt}</text>`;
+            }
+          }
+          b+=label(c.x+c.w/2,mid+c.nrows*14+8,c.sub,0.4);
+        } else {
+          b+=box(c.x,mid-20,c.w,40,c.label,c.sub,c.bright);
+        }
+        if(i<cols.length-1){
+          b+=line(c.x+c.w+2,mid,cols[i+1].x-2,mid,true,true);
+        }
+      });
+      b+=label(340,30,'compressão: 128 → 64 neurônios',0.4);
+      return svg(190,b);
+    }
+  },
+  {
+    stage:'ETAPA 3 — CAMADA DE SAÍDA',
+    title:'Um neurônio de saída: dígito 3',
+    eq:`z³₃ = w³₃ᵀ · h² + b³₃\n\n= w₁·2.10 + w₂·0.55 + … + w₆₄·1.33 + b\n\nz³₃ = 3.81\n<span>Este neurônio "decide" a probabilidade do dígito ser 3</span>`,
+    desc:'Na camada de saída, temos 10 neurônios — um para cada dígito (0 a 9). Focamos no neurônio do dígito 3. Ele recebe os 64 valores de h² e calcula sua pré-ativação z³₃. Um valor alto significa que a rede "acredita" que a imagem é um 3.',
+    svg:()=>{
+      let b='';
+      const inputs=[
+        {y:28,lab:'h²₁=2.10',w:'w₁',bright:true},
+        {y:64,lab:'h²₂=0.55',w:'w₂',bright:true},
+        {y:100,lab:'h²₃=0.00',w:'w₃',bright:false},
+        {y:136,lab:'⋮',w:'',bright:false},
+        {y:162,lab:'h²₆₄=1.33',w:'w₆₄',bright:false},
+      ];
+      inputs.forEach(({y,lab,w,bright})=>{
+        if(lab==='⋮'){b+=`<text x="95" y="${y+10}" text-anchor="middle" font-family="monospace" font-size="14" fill="${C}" opacity="0.25">⋮</text>`;return;}
+        b+=box(40,y,120,30,lab,null,bright);
+        if(w) b+=label(192,y+15,`×${w}`,bright?0.6:0.15);
+        b+=line(160,y+15,228,105,bright,false);
+      });
+      b+=circ(258,105,30,'Σ',true);
+      b+=label(258,145,'+ b³₃',0.5);
+      b+=line(288,105,360,105,true,true);
+      b+=box(364,85,130,40,'z³₃ = 3.81',null,true);
+      b+=label(429,75,'pré-ativação',0.5);
+      b+=label(429,60,'(ainda NÃO é probabilidade)',0.35);
+      b+=`<text x="520" y="100" font-family="monospace" font-size="28" fill="${C}" opacity="0.12">3</text>`;
+      return svg(210,b);
+    }
+  },
+  {
+    stage:'ETAPA 3 — CAMADA DE SAÍDA',
+    title:'Sigmoide: convertendo em probabilidade',
+    eq:`ŷ₃ = σ(z³₃) = 1 / (1 + e⁻³·⁸¹)\n\nŷ₃ = 1 / (1 + e⁻³·⁸¹)  ≈  0.978\n<span>σ mapeia qualquer valor real para o intervalo (0, 1)</span>`,
+    desc:'A pré-ativação z³₃ = 3.81 é passada pela função sigmoide σ, que a "espreme" para o intervalo (0, 1). Um z muito positivo → σ próximo de 1 (alta confiança). Um z muito negativo → σ próximo de 0 (baixa confiança). O resultado ŷ₃ é a probabilidade estimada.',
+    svg:()=>{
+      let b='';
+      b+=box(40,70,110,36,'z³₃ = 3.81',null,true);
+      b+=line(150,88,220,88,true,true);
+      b+=`<rect x="224" y="60" width="130" height="56" rx="4" fill="#000" stroke="${C}" stroke-width="1.5"/>`;
+      b+=`<text x="289" y="83" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="11" fill="${C}" font-weight="700">σ(z)</text>`;
+      b+=`<text x="289" y="103" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="9" fill="${C}" opacity="0.6">1 / (1 + e⁻ᶻ)</text>`;
+      b+=line(354,88,424,88,true,true);
+      b+=box(428,70,130,36,'ŷ₃ ≈ 0.978',null,true);
+      b+=label(493,58,'probabilidade do dígito 3',0.6);
+      const gx=80,gy=155,gw=240,gh=110;
+      b+=`<line x1="${gx}" y1="${gy+gh}" x2="${gx+gw}" y2="${gy+gh}" stroke="${C}" stroke-width="0.5" opacity="0.3"/>`;
+      b+=`<line x1="${gx+gw/2}" y1="${gy-5}" x2="${gx+gw/2}" y2="${gy+gh+4}" stroke="${C}" stroke-width="0.5" opacity="0.3"/>`;
+      b+=`<polyline points="${gx},${gy+gh-4} ${gx+30},${gy+gh-5} ${gx+60},${gy+gh-9} ${gx+90},${gy+gh-22} ${gx+110},${gy+gh-40} ${gx+120},${gy+gh/2} ${gx+130},${gy+28} ${gx+152},${gy+14} ${gx+180},${gy+8} ${gx+210},${gy+5} ${gx+240},${gy+4}" fill="none" stroke="${C}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+      b+=label(gx+gw/2,gy-14,'σ(z)',0.5);
+      b+=`<line x1="${gx}" y1="${gy+4}" x2="${gx+gw}" y2="${gy+4}" stroke="${C}" stroke-width="0.4" stroke-dasharray="2 2" opacity="0.2"/>`;
+      const px=gx+gw*0.77, py=gy+10;
+      b+=`<circle cx="${px}" cy="${py}" r="5" fill="${C}" opacity="0.95"/>`;
+      b+=`<line x1="${px}" y1="${py}" x2="${px}" y2="${gy+gh}" stroke="${C}" stroke-width="0.5" stroke-dasharray="2 2" opacity="0.4"/>`;
+      b+=label(px+30,py-8,'z=3.81 → 0.978',0.7);
+      b+=label(gx+2,gy-14,'1',0.3);
+      b+=label(gx+2,gy+gh+14,'0',0.3);
+      const gx2=380,gy2=155;
+      b+=`<rect x="${gx2}" y="${gy2}" width="260" height="${gh}" rx="4" fill="none" stroke="${C}" stroke-width="0.4" stroke-dasharray="3 2" opacity="0.2"/>`;
+      b+=label(gx2+130,gy2+14,'todos os 10 neurônios de saída',0.4);
+      const digits=['0','1','2','3','4','5','6','7','8','9'];
+      const probs=[0.021,0.034,0.058,0.978,0.043,0.017,0.062,0.029,0.011,0.038];
+      digits.forEach((d,i)=>{
+        const bx=gx2+8+i*24,by=gy2+25;
+        const bh=Math.round(probs[i]*70);
+        const bright=i===3;
+        b+=`<rect x="${bx}" y="${by+70-bh}" width="20" height="${bh}" rx="2" fill="${bright?C:'none'}" stroke="${C}" stroke-width="${bright?1.5:0.5}" opacity="${bright?1:0.3}"/>`;
+        b+=`<text x="${bx+10}" y="${by+84}" text-anchor="middle" font-family="monospace" font-size="8" fill="${C}" opacity="${bright?0.9:0.3}">${d}</text>`;
+      });
+      return svg(290,b);
+    }
+  },
+  {
+    stage:'ETAPA 4 — DECISÃO FINAL',
+    title:'argmax: escolhendo o dígito',
+    eq:`predição = argmax(ŷ₀, ŷ₁, …, ŷ₉)\n\nŷ = [0.021, 0.034, 0.058, 0.978, 0.043,\n     0.017, 0.062, 0.029, 0.011, 0.038]\n\nmax = ŷ₃ = 0.978  →  dígito 3\n<span>argmax retorna o índice do maior valor do vetor de saída</span>`,
+    desc:'O vetor de saída ŷ tem 10 valores sigmoides, um por dígito. O argmax simplesmente encontra qual tem a maior probabilidade. Aqui, ŷ₃ = 0.978 é o vencedor — a rede prediz o dígito 3. O forward pass está completo.',
+    svg:()=>{
+      let b='';
+      const probs=[0.021,0.034,0.058,0.978,0.043,0.017,0.062,0.029,0.011,0.038];
+      const digits=['0','1','2','3','4','5','6','7','8','9'];
+      const bx0=40,by0=20,bw=52,bh=30,gap=8;
+      digits.forEach((d,i)=>{
+        const bx=bx0+i*(bw+gap);
+        const bright=i===3;
+        b+=`<rect x="${bx}" y="${by0}" width="${bw}" height="${bh}" rx="4" fill="${bright?C:'#000'}" stroke="${C}" stroke-width="${bright?1.5:0.5}" opacity="${bright?1:0.35}"/>`;
+        b+=`<text x="${bx+bw/2}" y="${by0+bh/2}" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="8" fill="${bright?'#000':C}" opacity="${bright?1:0.4}" font-weight="${bright?700:400}">ŷ${d}=${probs[i].toFixed(3)}</text>`;
+      });
+      b+=label(340,70,'vetor de saída ŷ  (10, 1)',0.4);
+      b+=`<line x1="340" y1="78" x2="340" y2="110" stroke="${C}" stroke-width="1" opacity="0.5" marker-end="url(#ar)"/>`;
+      b+=`<rect x="234" y="114" width="212" height="36" rx="4" fill="#000" stroke="${C}" stroke-width="1"/>`;
+      b+=`<text x="340" y="132" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="10" fill="${C}" font-weight="700">argmax(ŷ) = índice 3</text>`;
+      b+=`<line x1="340" y1="150" x2="340" y2="178" stroke="${C}" stroke-width="1.5" opacity="0.8" marker-end="url(#ar)"/>`;
+      b+=`<rect x="246" y="182" width="188" height="50" rx="4" fill="#000" stroke="${C}" stroke-width="2"/>`;
+      b+=`<text x="340" y="202" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="22" fill="${C}" font-weight="700">DÍGITO: 3</text>`;
+      b+=`<text x="340" y="222" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="9" fill="${C}" opacity="0.5">confiança: 97.8%</text>`;
+      const rx=40,ry=105,rw=600,rh=180;
+      b+=label(340,260,'resumo do forward pass',0.35);
+      const stages=['x  (784,1)','W¹,b¹','h¹  (128,1)','W²,b²','h²  (64,1)','W³,b³','ŷ  (10,1)','argmax','3'];
+      const clrs=['0.4','0.3','0.7','0.3','0.7','0.3','0.8','0.4','1'];
+      const sx0=40,sy=280,sw=56,sg=10;
+      stages.forEach((s,i)=>{
+        const sx=sx0+i*(sw+sg);
+        const bright=i===8;
+        b+=`<rect x="${sx}" y="${sy}" width="${sw}" height="26" rx="3" fill="${bright?C:'#000'}" stroke="${C}" stroke-width="${bright?1.5:0.5}" opacity="${clrs[i]}"/>`;
+        b+=`<text x="${sx+sw/2}" y="${sy+13}" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="7" fill="${bright?'#000':C}" opacity="${bright?1:Number(clrs[i])+0.1}">${s}</text>`;
+        if(i<stages.length-1) b+=line(sx+sw+1,sy+13,sx+sw+sg-1,sy+13,Number(clrs[i])>0.5,Number(clrs[i])>0.5);
+      });
+      return svg(328,b);
+    }
+  }
+];
+
+let cur=0;
+
+function render(){
+  const s=steps[cur];
+  document.getElementById('stage-label').textContent=s.stage;
+  document.getElementById('step-label').textContent=s.title;
+  document.getElementById('svg-area').innerHTML=s.svg();
+  document.getElementById('eq-box').innerHTML=s.eq.replace(/\n/g,'<br>');
+  document.getElementById('desc-box').textContent=s.desc;
+  document.getElementById('counter').textContent=`${cur+1} / ${steps.length}`;
+  document.getElementById('prev-btn').disabled=cur===0;
+  document.getElementById('next-btn').disabled=cur===steps.length-1;
+  document.getElementById('next-btn').textContent=cur===steps.length-1?'Concluído':'Próximo →';
+  const dots=document.getElementById('dots');
+  dots.innerHTML='';
+  steps.forEach((_,i)=>{
+    const d=document.createElement('div');
+    d.className='fp-dot'+(i===cur?' active':i<cur?' done':'');
+    dots.appendChild(d);
+  });
+}
+
+function move(d){
+  const n=cur+d;
+  if(n>=0&&n<steps.length){cur=n;render();}
+}
+
+render();
+</script>
