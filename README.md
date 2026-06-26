@@ -11,3 +11,7 @@ O repositório contém:
 - **Slides** utilizados na aula teórica;
 - **Notebook prático** com implementações e experimentos realizados durante a aula;
 - Recursos auxiliares utilizados para complementar a apresentação.
+
+
+Google Coolab: https://colab.research.google.com/drive/11FeOJnyuog4Z7CXLsX3ixhK3tC8RYMwp?usp=sharing
+
